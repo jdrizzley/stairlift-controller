@@ -98,6 +98,7 @@ def main():
     buflen = int(args.window * SAMPLE_HINT_HZ * 1.5) + 100
     t_buf, measured_buf, pwm_buf = (deque(maxlen=buflen) for _ in range(3))
     t0_arduino = None
+    last_millis = None
 
     # Setpoints arrive in a "# CONFIG TARGET_RPM_UP=... TARGET_RPM_DOWN=..." line at boot
     config = {"target_up": None, "target_down": None}
@@ -125,7 +126,7 @@ def main():
     title = ax1.set_title("Waiting for data...")
 
     def drain_serial():
-        nonlocal t0_arduino
+        nonlocal t0_arduino, last_millis
         try:
             while ser.in_waiting:
                 raw = ser.readline().decode("utf-8", errors="ignore")
@@ -139,6 +140,12 @@ def main():
                     target_down_line.set_ydata([config["target_down"]] * 2)
                     target_up_line.set_visible(True)
                     target_down_line.set_visible(True)
+                    # Arduino just booted — drop anything from before
+                    t0_arduino  = None
+                    last_millis = None
+                    t_buf.clear()
+                    measured_buf.clear()
+                    pwm_buf.clear()
                     print(f"Targets received: up={config['target_up']:.1f}  "
                         f"down={config['target_down']:.1f}")
                     continue
@@ -146,9 +153,20 @@ def main():
                 s = parse_line(raw)
                 if s is None:
                     continue
+                # Reset timeline if Arduino restarted mid-run (millis went backwards)
+                if last_millis is not None and s["millis"] < last_millis - 1000:
+                    print("Arduino reset detected mid-stream — restarting timeline")
+                    t0_arduino = None
+                    t_buf.clear()
+                    measured_buf.clear()
+                    pwm_buf.clear()
+
                 if t0_arduino is None:
                     t0_arduino = s["millis"]
+                last_millis = s["millis"]
+
                 t = (s["millis"] - t0_arduino) / 1000.0
+
                 t_buf.append(t)
                 measured_buf.append(s["measured"])
                 pwm_buf.append(s["pwm"])
