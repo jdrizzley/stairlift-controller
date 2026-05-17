@@ -28,7 +28,10 @@
 // Define HUMAN_OUTPUT to see readable event messages (button presses, state
 // transitions, "DEBUG_MODE: ready for input", etc.) on the Serial Monitor.
 // Comment it out to emit only CSV telemetry for the Python plotter.
+
+
 //#define HUMAN_OUTPUT
+//#define OPEN_LOOP_MODE   // Uncomment for open-loop demonstration
 
 
 // ============================================================================
@@ -120,7 +123,8 @@ Direction pendingDirection = DIR_STOP;  // target direction after REVERSING
 // PWM control
 int pwmValue       = 0;    // current PWM duty cycle (0-255)
 int targetPwmValue = 50;  // target PWM for steady-state operation
-const int DOWN_PWM = 50;
+const int UP_PWM   = 100;
+const int DOWN_PWM = 75;
 
 // Ramp control
 const int           RAMP_STEP     = 5;    // PWM increment per step
@@ -162,7 +166,7 @@ long          lastPulseCount     = 0;
 const float KP_UP   = 1.5;
 const float KI_UP   = 0.3;
 const float KP_DOWN = 1.2;
-const float KI_DOWN = 0.3;
+const float KI_DOWN = 0.15;
 const float TARGET_RPM_UP   = 27.0;  // active setpoint going up
 const float TARGET_RPM_DOWN = 40.0;  // gravity helps; same RPM needs less PWM, keeps PID linear
 float       targetRPM       = TARGET_RPM_UP;  // current setpoint (updated by PID)
@@ -305,7 +309,7 @@ void handleButtonPress(int button) {
       if (currentState == IDLE) {
         currentDirection = DIR_UP;
         currentState     = RAMP_UP;
-        targetPwmValue   = 100;
+        targetPwmValue   = targetPwmForDirection(DIR_UP);
       } else if (currentDirection == DIR_DOWN &&
                  (currentState == RAMP_UP || currentState == RUNNING)) {
         Serial.println("Reversing: DOWN -> UP");
@@ -331,7 +335,7 @@ void handleButtonPress(int button) {
       if (currentState == IDLE) {
         currentDirection = DIR_DOWN;
         currentState     = RAMP_UP;
-        targetPwmValue   = DOWN_PWM;
+        targetPwmValue   = targetPwmForDirection(DIR_DOWN);;
       } else if (currentDirection == DIR_UP &&
                  (currentState == RAMP_UP || currentState == RUNNING)) {
         Serial.println("Reversing: UP -> DOWN");
@@ -558,6 +562,7 @@ void handleStateMachine() {
           Serial.print("Direction reversed to: ");
           Serial.println(pendingDirection == DIR_UP ? "UP" : "DOWN");
           currentDirection = pendingDirection;
+          targetPwmValue   = targetPwmForDirection(currentDirection);
           pendingDirection = DIR_STOP;
           pidIntegral      = 0;
           currentState     = RAMP_UP;
@@ -678,6 +683,13 @@ void runPIDControl() {
   // Direction-specific setpoint and gains
   targetRPM = (currentDirection == DIR_UP) ? TARGET_RPM_UP : TARGET_RPM_DOWN;
 
+  #ifdef OPEN_LOOP_MODE
+    pwmValue    = targetPwmValue;   // hold feedforward, no correction
+    pidError    = 0;
+    pidIntegral = 0;
+    return;
+  #endif
+
 
   pidError = targetRPM - measuredRPM;
 
@@ -693,6 +705,10 @@ void runPIDControl() {
   pwmValue = targetPwmValue + (int)pidOutput;
   if (pwmValue > 255) pwmValue = 255;
   if (pwmValue < 0)   pwmValue = 0;
+}
+
+int targetPwmForDirection(Direction dir) {
+  return (dir == DIR_UP) ? UP_PWM : DOWN_PWM;
 }
 
 // ============================================================================
