@@ -84,7 +84,7 @@ enum Direction {
 // ============================================================================
 
 // Triangle dimensions (cm)
-const float BASE_LENGTH_CM            = 18.0;  // horizontal base
+const float BASE_LENGTH_CM            = 16.5;  // horizontal base
 const float ELEVATION_CM              = 10.0;  // vertical rise
 
 // Pulley dimensions (cm)
@@ -124,7 +124,7 @@ Direction pendingDirection = DIR_STOP;  // target direction after REVERSING
 int pwmValue       = 0;    // current PWM duty cycle (0-255)
 int targetPwmValue = 50;  // target PWM for steady-state operation
 const int UP_PWM   = 100;
-const int DOWN_PWM = 75;
+const int DOWN_PWM = 75; // closed loop 75
 
 // Ramp control
 const int           RAMP_STEP     = 5;    // PWM increment per step
@@ -164,16 +164,16 @@ long          lastPulseCount     = 0;
 
 // PID controller — tune Kp/Ki independently per direction
 const float KP_UP   = 1.5;
-const float KI_UP   = 0.3;
+const float KI_UP   = 0.3 / 25;
 const float KP_DOWN = 1.2;
-const float KI_DOWN = 0.15;
+const float KI_DOWN = 0.15 / 25;
 const float TARGET_RPM_UP   = 27.0;  // active setpoint going up
 const float TARGET_RPM_DOWN = 40.0;  // gravity helps; same RPM needs less PWM, keeps PID linear
 float       targetRPM       = TARGET_RPM_UP;  // current setpoint (updated by PID)
 
 float       pidError         = 0.0;
 float       pidIntegral      = 0.0;
-const float PID_INTEGRAL_MAX = 100.0;
+const float PID_INTEGRAL_MAX = 200.0;
 
 // Button debouncing
 unsigned long lastButtonChangeTime[3] = {0, 0, 0};
