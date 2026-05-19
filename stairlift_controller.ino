@@ -84,7 +84,7 @@ enum Direction {
 // ============================================================================
 
 // Triangle dimensions (cm)
-const float BASE_LENGTH_CM            = 16.5;  // horizontal base
+const float BASE_LENGTH_CM            = 17;  // horizontal base
 const float ELEVATION_CM              = 10.0;  // vertical rise
 
 // Pulley dimensions (cm)
@@ -126,6 +126,12 @@ int targetPwmValue = 50;  // target PWM for steady-state operation
 const int UP_PWM   = 100;
 const int DOWN_PWM = 75; // closed loop 75
 
+const int UP_BREAKAWAY_PWM   = 170;
+const int UP_CRUISE_PWM      = 55;
+const int DOWN_BREAKAWAY_PWM = 120;
+const int DOWN_CRUISE_PWM    = 50;
+const float MOTION_THRESHOLD_RPM = 5.0;   // we're definitely moving above this
+
 // Ramp control
 const int           RAMP_STEP     = 5;    // PWM increment per step
 const int           RAMP_INTERVAL = 50;   // ms between ramp steps
@@ -166,7 +172,7 @@ long          lastPulseCount     = 0;
 const float KP_UP   = 1.5;
 const float KI_UP   = 0.3 / 25;
 const float KP_DOWN = 1.2;
-const float KI_DOWN = 0.15 / 25;
+const float KI_DOWN = 0.2 / 25;
 const float TARGET_RPM_UP   = 27.0;  // active setpoint going up
 const float TARGET_RPM_DOWN = 40.0;  // gravity helps; same RPM needs less PWM, keeps PID linear
 float       targetRPM       = TARGET_RPM_UP;  // current setpoint (updated by PID)
@@ -507,19 +513,29 @@ void handleStateMachine() {
         break;
       }
 
-      if (currentTime - lastRampTime >= RAMP_INTERVAL) {
-        if (pwmValue < targetPwmValue) {
-          pwmValue += RAMP_STEP;
-          if (pwmValue > targetPwmValue) pwmValue = targetPwmValue;
+        if (currentTime - lastRampTime >= RAMP_INTERVAL) {
+          int breakawayPwm = (currentDirection == DIR_UP) ? UP_BREAKAWAY_PWM
+                                                          : DOWN_BREAKAWAY_PWM;
+          int cruisePwm    = (currentDirection == DIR_UP) ? UP_CRUISE_PWM
+                                                          : DOWN_CRUISE_PWM;
+
+          // Ramp aggressively toward breakaway
+          if (pwmValue < breakawayPwm) {
+            pwmValue += RAMP_STEP;
+            if (pwmValue > breakawayPwm) pwmValue = breakawayPwm;
+          }
+
+          // The moment the motor is actually moving, snap to cruise and hand off
+          if (measuredRPM > MOTION_THRESHOLD_RPM) {
+            Serial.println("Motion detected — snapping to cruise PWM, entering RUNNING");
+            pwmValue       = cruisePwm;
+            targetPwmValue = cruisePwm;
+            pidIntegral    = 0;
+            currentState   = RUNNING;
+          }
+          lastRampTime = currentTime;
         }
-        if (pwmValue >= targetPwmValue) {
-          Serial.println("Target speed reached — entering RUNNING");
-          currentState = RUNNING;
-          pidIntegral  = 0;
-        }
-        lastRampTime = currentTime;
-      }
-      break;
+        break;
 
     case RUNNING:
       if (currentDirection == DIR_UP && atTopLimit()) {
